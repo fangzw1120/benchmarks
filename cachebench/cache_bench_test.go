@@ -19,6 +19,8 @@ package cachebench
 import (
 	"errors"
 	"math/rand"
+	"path"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -33,6 +35,8 @@ import (
 	"github.com/coocood/freecache"
 	"github.com/golang/groupcache/lru"
 	"github.com/pingcap/go-ycsb/pkg/generator"
+
+	logger "git.woa.com/forisfang_tut/logger"
 )
 
 type Cache interface {
@@ -338,6 +342,7 @@ func runCacheBenchmark(b *testing.B, cache Cache, keys [][]byte, pctWrites uint6
 		_ = cache.Set(keys[i], []byte("data"))
 	}
 
+	logger.Infof("%+v data ready", b.Name())
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		index := rand.Int() & mask
@@ -345,11 +350,13 @@ func runCacheBenchmark(b *testing.B, cache Cache, keys [][]byte, pctWrites uint6
 
 		if pctWrites*mc/100 != pctWrites*(mc-1)/100 {
 			for pb.Next() {
+				//logger.Debugf("Set runtime %+v, %+v", index, GetGoroutineID())
 				_ = cache.Set(keys[index&mask], []byte("data"))
 				index = index + 1
 			}
 		} else {
 			for pb.Next() {
+				//logger.Debugf("Get runtime %+v, %+v", index, GetGoroutineID())
 				_, _ = cache.Get(keys[index&mask])
 				index = index + 1
 			}
@@ -357,7 +364,20 @@ func runCacheBenchmark(b *testing.B, cache Cache, keys [][]byte, pctWrites uint6
 	})
 }
 
+// BenchmarkCaches ...
+// @Description: go test . -bench=BenchmarkCaches -benchtime=1s
+// @param b
+//
 func BenchmarkCaches(b *testing.B) {
+	// set log config
+	binPath := GetMainDirectory()
+	logPath := binPath
+	logPath = "/tmp/benchmarks/cachebench"
+	logFileName := "cache_test.log"
+	_, fileName, _, _ := runtime.Caller(0)
+	removePath := path.Dir(fileName) + "/"
+	logger.Init(logPath, logFileName, true, false, true, logger.Params{RemovePathPrefix: removePath})
+
 	zipfList := zipfKeyList()
 	oneList := oneKeyList()
 
@@ -370,47 +390,47 @@ func BenchmarkCaches(b *testing.B) {
 		keys      [][]byte
 		pctWrites uint64
 	}{
-		{"BigCacheZipfRead", newBigCache(b.N), zipfList, 0},
-		{"FastCacheZipfRead", newFastCache(b.N), zipfList, 0},
-		{"FreeCacheZipfRead", newFreeCache(b.N), zipfList, 0},
+		//{"BigCacheZipfRead", newBigCache(b.N), zipfList, 0},
+		//{"FastCacheZipfRead", newFastCache(b.N), zipfList, 0},
+		//{"FreeCacheZipfRead", newFreeCache(b.N), zipfList, 0},
 		{"GroupCacheZipfRead", newGroupCache(b.N), zipfList, 0},
-		{"RistrettoZipfRead", newRistretto(b.N), zipfList, 0},
+		//{"RistrettoZipfRead", newRistretto(b.N), zipfList, 0},
 		{"SyncMapZipfRead", newSyncMap(), zipfList, 0},
 
-		{"BigCacheOneKeyRead", newBigCache(b.N), oneList, 0},
-		{"FastCacheOneKeyRead", newFastCache(b.N), oneList, 0},
-		{"FreeCacheOneKeyRead", newFreeCache(b.N), oneList, 0},
+		//{"BigCacheOneKeyRead", newBigCache(b.N), oneList, 0},
+		//{"FastCacheOneKeyRead", newFastCache(b.N), oneList, 0},
+		//{"FreeCacheOneKeyRead", newFreeCache(b.N), oneList, 0},
 		{"GroupCacheOneKeyRead", newGroupCache(b.N), oneList, 0},
-		{"RistrettoOneKeyRead", newRistretto(b.N), oneList, 0},
+		//{"RistrettoOneKeyRead", newRistretto(b.N), oneList, 0},
 		{"SyncMapOneKeyRead", newSyncMap(), oneList, 0},
 
-		{"BigCacheZipfWrite", newBigCache(b.N), zipfList, 100},
-		{"FastCacheZipfWrite", newFastCache(b.N), zipfList, 100},
-		{"FreeCacheZipfWrite", newFreeCache(b.N), zipfList, 100},
-		{"GroupCacheZipfWrite", newGroupCache(b.N), zipfList, 100},
-		{"RistrettoZipfWrite", newRistretto(b.N), zipfList, 100},
-		{"SyncMapZipfWrite", newSyncMap(), zipfList, 100},
+		//{"BigCacheZipfWrite", newBigCache(b.N), zipfList, 100},
+		//{"FastCacheZipfWrite", newFastCache(b.N), zipfList, 100},
+		//{"FreeCacheZipfWrite", newFreeCache(b.N), zipfList, 100},
+		//{"GroupCacheZipfWrite", newGroupCache(b.N), zipfList, 100},
+		//{"RistrettoZipfWrite", newRistretto(b.N), zipfList, 100},
+		//{"SyncMapZipfWrite", newSyncMap(), zipfList, 100},
 
-		{"BigCacheOneKeyWrite", newBigCache(b.N), oneList, 100},
-		{"FastCacheOneKeyWrite", newFastCache(b.N), oneList, 100},
-		{"FreeCacheOneKeyWrite", newFreeCache(b.N), oneList, 100},
-		{"GroupCacheOneKeyWrite", newGroupCache(b.N), oneList, 100},
-		{"RistrettoOneKeyWrite", newRistretto(b.N), oneList, 100},
-		{"SyncMapOneKeyWrite", newSyncMap(), oneList, 100},
+		//{"BigCacheOneKeyWrite", newBigCache(b.N), oneList, 100},
+		//{"FastCacheOneKeyWrite", newFastCache(b.N), oneList, 100},
+		//{"FreeCacheOneKeyWrite", newFreeCache(b.N), oneList, 100},
+		//{"GroupCacheOneKeyWrite", newGroupCache(b.N), oneList, 100},
+		//{"RistrettoOneKeyWrite", newRistretto(b.N), oneList, 100},
+		//{"SyncMapOneKeyWrite", newSyncMap(), oneList, 100},
 
-		{"BigCacheZipfMixed", newBigCache(b.N), zipfList, 25},
-		{"FastCacheZipfMixed", newFastCache(b.N), zipfList, 25},
-		{"FreeCacheZipfMixed", newFreeCache(b.N), zipfList, 25},
-		{"GroupCacheZipfMixed", newGroupCache(b.N), zipfList, 25},
-		{"RistrettoZipfMixed", newRistretto(b.N), zipfList, 25},
-		{"SyncMapZipfMixed", newSyncMap(), zipfList, 25},
+		//{"BigCacheZipfMixed", newBigCache(b.N), zipfList, 25},
+		//{"FastCacheZipfMixed", newFastCache(b.N), zipfList, 25},
+		//{"FreeCacheZipfMixed", newFreeCache(b.N), zipfList, 25},
+		//{"GroupCacheZipfMixed", newGroupCache(b.N), zipfList, 25},
+		//{"RistrettoZipfMixed", newRistretto(b.N), zipfList, 25},
+		//{"SyncMapZipfMixed", newSyncMap(), zipfList, 25},
 
-		{"BigCacheOneKeyMixed", newBigCache(b.N), oneList, 25},
-		{"FastCacheOneKeyMixed", newFastCache(b.N), oneList, 25},
-		{"FreeCacheOneKeyMixed", newFreeCache(b.N), oneList, 25},
-		{"GroupCacheOneKeyMixed", newGroupCache(b.N), oneList, 25},
-		{"RistrettoOneKeyMixed", newRistretto(b.N), oneList, 25},
-		{"SyncMapOneKeyMixed", newSyncMap(), oneList, 25},
+		//{"BigCacheOneKeyMixed", newBigCache(b.N), oneList, 25},
+		//{"FastCacheOneKeyMixed", newFastCache(b.N), oneList, 25},
+		//{"FreeCacheOneKeyMixed", newFreeCache(b.N), oneList, 25},
+		//{"GroupCacheOneKeyMixed", newGroupCache(b.N), oneList, 25},
+		//{"RistrettoOneKeyMixed", newRistretto(b.N), oneList, 25},
+		//{"SyncMapOneKeyMixed", newSyncMap(), oneList, 25},
 	}
 
 	for _, bm := range benchmarks {
