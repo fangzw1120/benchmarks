@@ -18,10 +18,12 @@ package cachebench
 
 import (
 	"errors"
+	"git.woa.com/forisfang_tut/logger"
 	"math/rand"
 	"path"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -35,8 +37,6 @@ import (
 	"github.com/coocood/freecache"
 	"github.com/golang/groupcache/lru"
 	"github.com/pingcap/go-ycsb/pkg/generator"
-
-	logger "git.woa.com/forisfang_tut/logger"
 )
 
 type Cache interface {
@@ -330,8 +330,22 @@ func newSyncMap() *SyncMap {
 //                         Benchmark Code
 //========================================================================
 
-func runCacheBenchmark(b *testing.B, cache Cache, keys [][]byte, pctWrites uint64) {
+func runCacheBenchmark(b *testing.B, cache Cache, keys [][]byte, pctWrites uint64, cacheName string) {
+	start := time.Now()
+	logger.Info("start runCacheBenchmark")
+	defer func() {
+		end := time.Now()
+		logger.Infof("finish runCacheBenchmark exit cost: %dms", end.Sub(start).Milliseconds())
+	}()
+
 	b.ReportAllocs()
+
+	if strings.HasPrefix(cacheName, "GroupCache") {
+		logger.Debugf("newGroupCache %+v init, b.N %+v, keys length %+v", cacheName, b.N, len(keys))
+		newGroupCache(b.N)
+	} else {
+		logger.Debugf("%+v, init", b.Name())
+	}
 
 	size := len(keys)
 	mask := size - 1
@@ -341,8 +355,8 @@ func runCacheBenchmark(b *testing.B, cache Cache, keys [][]byte, pctWrites uint6
 	for i := 0; i < size; i++ {
 		_ = cache.Set(keys[i], []byte("data"))
 	}
+	logger.Debugf("%+v data ready", b.Name())
 
-	logger.Infof("%+v data ready", b.Name())
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		index := rand.Int() & mask
@@ -350,13 +364,11 @@ func runCacheBenchmark(b *testing.B, cache Cache, keys [][]byte, pctWrites uint6
 
 		if pctWrites*mc/100 != pctWrites*(mc-1)/100 {
 			for pb.Next() {
-				//logger.Debugf("Set runtime %+v, %+v", index, GetGoroutineID())
 				_ = cache.Set(keys[index&mask], []byte("data"))
 				index = index + 1
 			}
 		} else {
 			for pb.Next() {
-				//logger.Debugf("Get runtime %+v, %+v", index, GetGoroutineID())
 				_, _ = cache.Get(keys[index&mask])
 				index = index + 1
 			}
@@ -376,10 +388,10 @@ func BenchmarkCaches(b *testing.B) {
 	logFileName := "cache_test.log"
 	_, fileName, _, _ := runtime.Caller(0)
 	removePath := path.Dir(fileName) + "/"
-	logger.Init(logPath, logFileName, true, false, true, logger.Params{RemovePathPrefix: removePath})
+	logger.Init(logPath, logFileName, true, false, false, logger.Params{RemovePathPrefix: removePath})
 
 	zipfList := zipfKeyList()
-	oneList := oneKeyList()
+	//oneList := oneKeyList()
 
 	// two datasets (zipf, onekey)
 	// 3 caches (bigcache, freecache, sync.Map)
@@ -400,16 +412,16 @@ func BenchmarkCaches(b *testing.B) {
 		//{"BigCacheOneKeyRead", newBigCache(b.N), oneList, 0},
 		//{"FastCacheOneKeyRead", newFastCache(b.N), oneList, 0},
 		//{"FreeCacheOneKeyRead", newFreeCache(b.N), oneList, 0},
-		{"GroupCacheOneKeyRead", newGroupCache(b.N), oneList, 0},
+		//{"GroupCacheOneKeyRead", newGroupCache(b.N), oneList, 0},
 		//{"RistrettoOneKeyRead", newRistretto(b.N), oneList, 0},
-		{"SyncMapOneKeyRead", newSyncMap(), oneList, 0},
+		//{"SyncMapOneKeyRead", newSyncMap(), oneList, 0},
 
 		//{"BigCacheZipfWrite", newBigCache(b.N), zipfList, 100},
 		//{"FastCacheZipfWrite", newFastCache(b.N), zipfList, 100},
 		//{"FreeCacheZipfWrite", newFreeCache(b.N), zipfList, 100},
-		//{"GroupCacheZipfWrite", newGroupCache(b.N), zipfList, 100},
+		{"GroupCacheZipfWrite", newGroupCache(b.N), zipfList, 100},
 		//{"RistrettoZipfWrite", newRistretto(b.N), zipfList, 100},
-		//{"SyncMapZipfWrite", newSyncMap(), zipfList, 100},
+		{"SyncMapZipfWrite", newSyncMap(), zipfList, 100},
 
 		//{"BigCacheOneKeyWrite", newBigCache(b.N), oneList, 100},
 		//{"FastCacheOneKeyWrite", newFastCache(b.N), oneList, 100},
@@ -421,9 +433,9 @@ func BenchmarkCaches(b *testing.B) {
 		//{"BigCacheZipfMixed", newBigCache(b.N), zipfList, 25},
 		//{"FastCacheZipfMixed", newFastCache(b.N), zipfList, 25},
 		//{"FreeCacheZipfMixed", newFreeCache(b.N), zipfList, 25},
-		//{"GroupCacheZipfMixed", newGroupCache(b.N), zipfList, 25},
+		{"GroupCacheZipfMixed", newGroupCache(b.N), zipfList, 25},
 		//{"RistrettoZipfMixed", newRistretto(b.N), zipfList, 25},
-		//{"SyncMapZipfMixed", newSyncMap(), zipfList, 25},
+		{"SyncMapZipfMixed", newSyncMap(), zipfList, 25},
 
 		//{"BigCacheOneKeyMixed", newBigCache(b.N), oneList, 25},
 		//{"FastCacheOneKeyMixed", newFastCache(b.N), oneList, 25},
@@ -435,7 +447,7 @@ func BenchmarkCaches(b *testing.B) {
 
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			runCacheBenchmark(b, bm.cache, bm.keys, bm.pctWrites)
+			runCacheBenchmark(b, bm.cache, bm.keys, bm.pctWrites, bm.name)
 		})
 	}
 }
